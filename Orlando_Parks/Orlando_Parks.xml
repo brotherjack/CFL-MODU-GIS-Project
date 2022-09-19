@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><MD_Metadata xmlns:gts="http://www.isotc211.org/2005/gts" xmlns:gco="http://www.isotc211.org/2005/gco" xmlns:xalan="http://xml.apache.org/xalan" xmlns:srv="http://www.isotc211.org/2005/srv" xmlns:gmx="http://www.isotc211.org/2005/gmx" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:gml="http://www.opengis.net/gml" xmlns="http://www.isotc211.org/2005/gmd">
+    <characterSet>
+        <MD_CharacterSetCode codeList="http://www.isotc211.org/2005/resources/Codelist/gmxCodelists.xml#MD_CharacterSetCode" codeListValue="utf8" codeSpace="ISOTC211/19115">utf8</MD_CharacterSetCode>
+    </characterSet>
+    <hierarchyLevel>
+        <MD_ScopeCode codeList="http://www.isotc211.org/2005/resources/Codelist/gmxCodelists.xml#MD_ScopeCode" codeListValue="dataset" codeSpace="ISOTC211/19115">dataset</MD_ScopeCode>
+    </hierarchyLevel>
+    <hierarchyLevelName>
+        <gco:CharacterString>dataset</gco:CharacterString>
+    </hierarchyLevelName>
+    <contact gco:nilReason="missing"/>
+    <dateStamp gco:nilReason="missing"/>
+    <metadataStandardName>
+        <gco:CharacterString>ISO 19139 Geographic Information - Metadata - Implementation Specification</gco:CharacterString>
+    </metadataStandardName>
+    <metadataStandardVersion>
+        <gco:CharacterString>2007</gco:CharacterString>
+    </metadataStandardVersion>
+    <identificationInfo>
+        <MD_DataIdentification>
+            <citation gco:nilReason="missing"/>
+            <abstract>
+                <gco:CharacterString>Orlando Parks</gco:CharacterString>
+            </abstract>
+            <purpose>
+                <gco:CharacterString>Orlando Parks</gco:CharacterString>
+            </purpose>
+            <descriptiveKeywords>
+                <MD_Keywords>
+                    <keyword>
+                        <gco:CharacterString>Orlando</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Parks</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Community</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Outdoors</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Families</gco:CharacterString>
+                    </keyword>
+                </MD_Keywords>
+            </descriptiveKeywords>
+            <descriptiveKeywords>
+                <MD_Keywords>
+                    <keyword>
+                        <gco:CharacterString>Orlando</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Parks</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Community</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Outdoors</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Families</gco:CharacterString>
+                    </keyword>
+                </MD_Keywords>
+            </descriptiveKeywords>
+            <descriptiveKeywords>
+                <MD_Keywords>
+                    <keyword>
+                        <gco:CharacterString>Orlando</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Parks</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Community</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Outdoors</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Families</gco:CharacterString>
+                    </keyword>
+                </MD_Keywords>
+            </descriptiveKeywords>
+            <descriptiveKeywords>
+                <MD_Keywords>
+                    <keyword>
+                        <gco:CharacterString>Orlando</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Parks</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Community</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Outdoors</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Families</gco:CharacterString>
+                    </keyword>
+                </MD_Keywords>
+            </descriptiveKeywords>
+            <descriptiveKeywords>
+                <MD_Keywords>
+                    <keyword>
+                        <gco:CharacterString>Orlando</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Parks</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Community</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Outdoors</gco:CharacterString>
+                    </keyword>
+                    <keyword>
+                        <gco:CharacterString>Families</gco:CharacterString>
+                    </keyword>
+                </MD_Keywords>
+            </descriptiveKeywords>
+            <resourceConstraints>
+                <MD_Constraints>
+                    <useLimitation>
+                        <gco:CharacterString>THIS DATA IS BASED ON THE BEST INFORMATION AVAILABLE AND SHOULD NOT BE CONSTRUED AS LEGALLY BINDING. DISCLAIMER: GIS and CAD data this is obtained from the City of Orlando is spatially inaccurate. The City of Orlando makes no representations or guarantees as to the completeness or accuracy of this data or any provided attribute data. Data is provided as is, without warranty of any kind, either expressed or implied, including without limitation any warranties that the data is fit for a particular purpose. The City of Orlando shall have no liability whatsoever relative to the use of provided data. Full responsibility and liability relating to the use of provided data rests with the user. NOTE: Some of the electronic data contained herewith may be copyrighted by others. The redistribution of copyrighted material may be prohibited.</gco:CharacterString>
+                    </useLimitation>
+                </MD_Constraints>
+            </resourceConstraints>
+            <language gco:nilReason="missing"/>
+            <characterSet>
+                <MD_CharacterSetCode codeList="http://www.isotc211.org/2005/resources/Codelist/gmxCodelists.xml#MD_CharacterSetCode" codeListValue="utf8" codeSpace="ISOTC211/19115">utf8</MD_CharacterSetCode>
+            </characterSet>
+        </MD_DataIdentification>
+    </identificationInfo>
+</MD_Metadata>
