@@ -46,7 +46,11 @@ class EbirdManager:
                 self.sub_ids.append(feature['properties']['ebird_subId'])
             print(f"Loaded {len(self.sub_ids)} ebird checklist IDs")
         
-        modu_obs = get_species_observations(self.api_key, species_codes, region_code)
+        modu_obs = []
+        for species_code in species_codes:
+            obs = get_species_observations(self.api_key, species_code, region_code) 
+            modu_obs.extend(obs)
+            print(f"Pulled {len(obs)} from ebird for {species_code} in {region_code}")
         print(f"Pulled {len(modu_obs)} from ebird for {species_codes} in {region_code}")
         
         newCount = 0
@@ -81,7 +85,7 @@ if __name__ == '__main__':
         raise IOError("Environmental variable 'API_KEY' must be set")
 
     region_code = 'US-FL-095'
-    species_code = 'motduc'
+    species_code = ['motduc', 'x00422', 'motduc1', 'y00632']
     
     ebird_man = EbirdManager(API_KEY, "ebird.geojson")
     ebird_man.pull_new_entries(species_code, region_code)
