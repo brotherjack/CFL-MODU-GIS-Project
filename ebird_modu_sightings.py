@@ -26,6 +26,9 @@ class EbirdManager:
         else:
             return -1
 
+    def checklists_in_geojson(self):
+        return [entry['properties']['ebird_subId'] for entry in self.geo_json['features']]
+
     def set_individuals(self, subid, new_count):
         self.features[subid]['properties']['individuals'] = new_count
 
@@ -84,13 +87,28 @@ class EbirdManager:
             for entry in obs:
                 if entry['subId'] in observations.keys():
                     cross_count += 1
-                    observations[entry['subId']]['howMany'] += entry['subId']['howMany']
+                    observations[entry['subId']]['howMany'] += entry['howMany']
+                else:
+                    observations[entry['subId']] = entry 
             print(f"Pulled {len(obs)} from ebird for {species_code} in {region_code}")
             if cross_count > 0:
                 print(f"Found {cross_count} 'lumped' species")
-        
+
         print(f"Pulled {len(self._raw_pulls)} from ebird for {species_codes} in {region_code}")
         return observations
+
+    def _create_feature_from_observation(self, obs):
+        return Feature(
+            geometry=Point((obs['lng'], obs['lat'])), properties={
+            "ebird_locid": obs["locId"],
+            "observation_date": obs["obsDt"],
+            "individuals": obs["howMany"],
+            "ebird_valid": obs["obsValid"],
+            "ebird_reviewed": obs["obsReviewed"],
+            "locationPrivate": obs["locationPrivate"],
+            "ebird_subId": obs["subId"],
+            "ebird_location_name": obs["locName"]
+        })
 
     def pull_new_entries(self, region_code, species_codes=None, save=True):
         species_codes = species_codes if species_codes else self.targets
@@ -103,33 +121,25 @@ class EbirdManager:
             self.load()
         
         species_obs = self._pull_species_observations(region_code, species_codes)
-        
+        gjentries = self.checklists_in_geojson()
+
         newCount = 0
-        for obs in species_obs:
-            subid_count = self.inidv(obs["subId"])
-            if subid_count == -1:
+        for subid, obs in species_obs.items():
+            subid_count = self.indiv(subid)
+            if subid not in gjentries:
                 newCount += 1
-                self.geo_json.features.append(
-                    Feature(
-                        geometry=Point((obs['lng'], obs['lat'])), properties={
-                        "ebird_locid": obs["locId"],
-                        "observation_date": obs["obsDt"],
-                        "individuals": obs["howMany"],
-                        "ebird_valid": obs["obsValid"],
-                        "ebird_reviewed": obs["obsReviewed"],
-                        "locationPrivate": obs["locationPrivate"],
-                        "ebird_subId": obs["subId"],
-                        "ebird_location_name": obs["locName"]
-                    }))
-                self.features[obs["subId"]] = self.geo_json.features[-1]
+                self.geo_json.features.append(self._create_feature_from_observation(obs))
+                self.features[subid] = self.geo_json.features[-1]
             else:
                 if subid_count != obs['howMany']:
                     print(
-                        f"Count for {obs['subId']} has changed", 
+                        f"Count for {subid} has changed", 
                         f"from {obs['howMany']} to {subid_count}"
                     )
-                    self.set_individuals(obs["subId"], subid_count)
-                    continue
+                    self.set_individuals(subid, subid_count)
+                    index = gjentries.index(subid)
+                    assert(self.geo_json.features[index]['properties']['ebird_subId'] == subid)
+                    self.geo_json.features[index] = self._create_feature_from_observation(obs)
         
         if save:
             self.save()
@@ -147,6 +157,6 @@ if __name__ == '__main__':
     species_codes = ['motduc', 'x00422', 'motduc1', 'y00632']
 
     ebird_man = EbirdManager(API_KEY, "ebird.geojson", targets=species_codes)
-    new_count = ebird_man.pull_new_entries(region_code)
+    new_count = ebird_man.pull_new_entries(region_code, save=True)
     print(f"Saved {new_count} new entries")
 
