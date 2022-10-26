@@ -21,15 +21,23 @@ class EbirdManager:
             return gjson['type'] == 'FeatureCollection' and hasattr(gjson['features'], 'append')
 
     def indiv(self, subid):
+        """
+        Returns the number of individuals for an ebird checklist, 
+        or -1 if the checklist ID is not found
+        """
         if subid in self.features.keys():
             return self.features[subid]['properties']['individuals']
         else:
             return -1
 
-    def checklists_in_geojson(self):
+    def checklists_in_geojson(self) -> list:
+        """Returns checklist ID's in geojson data
+        """
         return [entry['properties']['ebird_subId'] for entry in self.geo_json['features']]
 
     def set_individuals(self, subid, new_count):
+        """Changes the count of a checklist
+        """
         self.features[subid]['properties']['individuals'] = new_count
 
     def dedupe(self) -> List[dict]:
@@ -55,6 +63,10 @@ class EbirdManager:
             self.features[subid] = feature
 
     def load(self, fname=None):
+        """
+        Loads the geojson file at fname (or in self.file_name). Sets up 
+        this individual's feature hash. 
+        """
         if not fname:
             fname = self.file_name
         
@@ -67,7 +79,9 @@ class EbirdManager:
             else:
                 raise IOError(f"File '{fname}' is not a feature collection!")
 
-    def save(self, fname=None):
+    def save(self, fname=None) -> None:
+        """Saves gejson object into a geojson file at (fname or self.file_name)
+        """
         if not fname:
             fname = self.file_name
         
@@ -110,7 +124,20 @@ class EbirdManager:
             "ebird_location_name": obs["locName"]
         })
 
-    def pull_new_entries(self, region_code, species_codes=None, save=True):
+    def pull_new_entries(self, region_code, species_codes=None, save=True) -> int:
+        """
+        Takes an ebird `region_code` (eg. "US-FL-095") and a list of ebird
+        `species_codes` (eg. ['motduc', 'x00422', 'motduc1', 'y00632']),
+        defaults to `self.targets`. This method then uses this data to make
+        an API call to ebird to download the latest observations for the 
+        `species_codes`, which are treated as equivalent (ie. "mottled duck" 
+        and "hybrid mottled x mallard duck") are counted together. New entries
+        are appended to `self.geo_json` and this object and `self.features` 
+        are upated as they are in the ebird database. If `save` is true,
+        `self.save()` is called.
+
+        Returns the number of new entries.
+        """
         species_codes = species_codes if species_codes else self.targets
         if not species_codes:
             raise AttributeError(
