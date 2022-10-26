@@ -4,7 +4,7 @@ from ebird.api import get_species_observations, get_regions
 from geojson import Feature, Point, FeatureCollection
 from geojson import dump as geojson_dump
 from geojson import load as geojson_load
-import os
+import os, re
 
 
 class EbirdManager:
@@ -14,7 +14,16 @@ class EbirdManager:
         self.targets = targets
         self.api_key = api_key
         self.geo_json = FeatureCollection(features=[])
+        self._ebird_regex = re.compile("S[0-9]{9}") # Regex for ebird checklist IDs
         self._raw_pulls = []
+
+    def is_checklist_id_valid(self, checklist_id) -> bool:
+        """Checks if ebird checklist ID is formated correctly. 
+        """
+        if type(checklist_id) == str:
+            return type(self._ebird_regex.match(checklist_id)) == re.Match 
+        else:
+            return False
 
     def _is_feature_collection(self, gjson) -> bool:
         if 'type' in gjson.keys() and 'features' in gjson.keys():
