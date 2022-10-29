@@ -4,7 +4,8 @@ from ebird.api import get_species_observations, get_regions
 from geojson import Feature, Point, FeatureCollection
 from geojson import dump as geojson_dump
 from geojson import load as geojson_load
-import os, re
+import pandas as pd
+import os, re 
 
 
 class EbirdManager:
@@ -16,6 +17,28 @@ class EbirdManager:
         self.geo_json = FeatureCollection(features=[])
         self._ebird_regex = re.compile("S[0-9]{9}") # Regex for ebird checklist IDs
         self._raw_pulls = []
+        self.modu_site_reports = None
+    
+    def _modu_count_column_mapper(col):
+        col = col.lower().replace(" ", "_")
+        if "longitude" in col:
+            return "longitude"
+        elif "latitude" in col:
+            return "latitude"
+        elif "modu" in col:
+            return "modu_count"
+        elif "whib" in col:
+            return "whib_count"
+        elif "mudu" in col:
+            return "mudu_count"
+        elif "grgo" in col:
+            return "grgo_count"
+        else:
+            return col
+
+    def _clean_modu_site_df_columns(self, df) -> pd.DataFrame:
+        return df.reanme(mapper=self._modu_count_column_mapper, axis=1)
+        
 
     def is_checklist_id_valid(self, checklist_id) -> bool:
         """Checks if ebird checklist ID is formated correctly. 
@@ -182,6 +205,12 @@ class EbirdManager:
 
         return newCount
 
+    def import_modu_site_reports(self, fname):
+        """Imports
+        """
+        self.modu_site_reports = self._clean_modu_site_df_columns(
+            pd.read_excel(fname)
+        )
 
 if __name__ == '__main__':
     API_KEY = os.environ.get("API_KEY")
