@@ -5,8 +5,8 @@ from ebird.api import get_species_observations, get_regions
 from geojson import Feature, Point, FeatureCollection
 from geojson import dump as geojson_dump
 from geojson import load as geojson_load
-import fiona
 import numpy as np
+import geopandas as gpd
 import pandas as pd
 import os, re
 
@@ -222,25 +222,16 @@ class EbirdManager:
             pd.read_excel(fname)
         )
 
-    def import_survey_sites(self, fname="survey_sites.gpkg"):
+    def import_survey_sites(self, fname="survey_sites.gpkg", layer='orlando_parks'):
         """Imports survey sites from geopackage
         """
-        with fiona.open(fname, 'r') as fi:
-            d = dict(fi)
-            self.survey_sites = pd.DataFrame([d[i]['properties'] for i in d.keys()], index=d.keys())
+        self.survey_sites = gpd.read_file(fname, layer=layer)
         for introw in ['MODU_COUNT', 'MUDU_COUNT', 'WHIB_COUNT', 'GRGO_COUNT', 'AREA']:
             setattr(self.survey_sites, introw, getattr(self.survey_sites, introw).convert_dtypes())
         self.survey_sites.replace({np.nan: None}, inplace=True)
 
-    def export_survey_sites(self, fname="survey_sites.gpkg"):
-        d = None
-        with fiona.open(fname, 'r') as fi:
-            d = dict(fi)
-        
-        with fiona.open(fname, 'w', driver='GPKG') as fi:
-            for i in self.survey_sites.index:
-                d[i]['properties'] = OrderedDict(self.survey_sites.loc[i])
-            fi.write(d)
+    def export_survey_sites(self, fname="survey_sites.gpkg", layer='orlando_parks'):
+        self.survey_sites.to_file(fname, layer=layer, driver="GPKG")
         
     def names_of_duplicated_sites(self):
         return sorted(list(self.survey_sites[self.survey_sites.duplicated()].NAME))
