@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 from typing import List, Tuple, Optional
+from collections import OrderedDict
 from ebird.api import get_species_observations, get_regions
 from geojson import Feature, Point, FeatureCollection
 from geojson import dump as geojson_dump
 from geojson import load as geojson_load
+import numpy as np
+import geopandas as gpd
 import pandas as pd
-import os, re 
+import os, re
 
 
 class EbirdManager:
@@ -19,7 +22,7 @@ class EbirdManager:
         self._raw_pulls = []
         self.modu_site_reports = None
     
-    def _modu_count_column_mapper(col):
+    def _modu_count_column_mapper(self, col):
         col = col.lower().replace(" ", "_")
         if "longitude" in col:
             return "longitude"
@@ -37,8 +40,15 @@ class EbirdManager:
             return col
 
     def _clean_modu_site_df_columns(self, df) -> pd.DataFrame:
-        return df.reanme(mapper=self._modu_count_column_mapper, axis=1)
-        
+        df = df.rename(mapper=self._modu_count_column_mapper, axis=1)
+        df.modu_count = df.modu_count.convert_dtypes()
+        df.whib_count = df.whib_count.convert_dtypes()
+        df.mudu_count = df.mudu_count.convert_dtypes()
+        df.grgo_count = df.grgo_count.convert_dtypes()
+        df.scout_date = df.scout_date.dt.date
+        df.added = df.added.astype(bool)
+        df.s3 = df.s3.str.slice(0,1).astype(int)
+        return df
 
     def is_checklist_id_valid(self, checklist_id) -> bool:
         """Checks if ebird checklist ID is formated correctly. 
@@ -206,11 +216,25 @@ class EbirdManager:
         return newCount
 
     def import_modu_site_reports(self, fname):
-        """Imports
+        """Imports modu site reports from Google forms XLSX
         """
         self.modu_site_reports = self._clean_modu_site_df_columns(
             pd.read_excel(fname)
         )
+
+    def import_survey_sites(self, fname="survey_sites.gpkg", layer='orlando_parks'):
+        """Imports survey sites from geopackage
+        """
+        self.survey_sites = gpd.read_file(fname, layer=layer)
+        for introw in ['MODU_COUNT', 'MUDU_COUNT', 'WHIB_COUNT', 'GRGO_COUNT', 'AREA']:
+            setattr(self.survey_sites, introw, getattr(self.survey_sites, introw).convert_dtypes())
+        self.survey_sites.replace({np.nan: None}, inplace=True)
+
+    def export_survey_sites(self, fname="survey_sites.gpkg", layer='orlando_parks'):
+        self.survey_sites.to_file(fname, layer=layer, driver="GPKG")
+        
+    def names_of_duplicated_sites(self):
+        return sorted(list(self.survey_sites[self.survey_sites.duplicated()].NAME))
 
 if __name__ == '__main__':
     API_KEY = os.environ.get("API_KEY")
