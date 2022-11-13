@@ -226,7 +226,7 @@ class EbirdManager:
         """Imports survey sites from geopackage
         """
         self.survey_sites = gpd.read_file(fname, layer=layer)
-        for introw in ['MODU_COUNT', 'MUDU_COUNT', 'WHIB_COUNT', 'GRGO_COUNT', 'AREA']:
+        for introw in ['MODU_COUNT', 'MUDU_COUNT', 'WHIB_COUNT', 'GRGO_COUNT', 'AREA', 'OBJECTID']:
             setattr(self.survey_sites, introw, getattr(self.survey_sites, introw).convert_dtypes())
         self.survey_sites.replace({np.nan: None}, inplace=True)
 
