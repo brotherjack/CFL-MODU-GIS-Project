@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from typing import List, Tuple, Optional
+import argparse
 from collections import OrderedDict
 from ebird.api import get_species_observations, get_regions
 from geojson import Feature, Point, FeatureCollection
@@ -8,8 +9,16 @@ from geojson import load as geojson_load
 import numpy as np
 import geopandas as gpd
 import pandas as pd
-import os, re
+import logging, os, re, sys
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if logger.hasHandlers():
+    logger.handlers[0].setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+else:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+    logger.addHandler(handler)
 
 class EbirdManager:
     def __init__(self, api_key, fname=None, targets=[]):
@@ -117,7 +126,7 @@ class EbirdManager:
             if self._is_feature_collection(gjson):
                 self.geo_json = gjson
                 self._setup_features()
-                print(f"Loaded {len(self.features)} ebird checklist IDs")
+                logger.info(f"Loaded {len(self.features)} ebird checklist IDs")
             else:
                 raise IOError(f"File '{fname}' is not a feature collection!")
 
@@ -146,11 +155,11 @@ class EbirdManager:
                     observations[entry['subId']]['howMany'] += entry['howMany']
                 else:
                     observations[entry['subId']] = entry 
-            print(f"Pulled {len(obs)} from ebird for {species_code} in {region_code}")
+            logging.info(f"Pulled {len(obs)} from ebird for {species_code} in {region_code}")
             if cross_count > 0:
-                print(f"Found {cross_count} 'lumped' species")
+                logging.debug(f"Found {cross_count} 'lumped' species")
 
-        print(f"Pulled {len(self._raw_pulls)} from ebird for {species_codes} in {region_code}")
+        logging.debug(f"Pulled {len(self._raw_pulls)} from ebird for {species_codes} in {region_code}")
         return observations
 
     def _create_feature_from_observation(self, obs):
@@ -201,7 +210,7 @@ class EbirdManager:
                 self.features[subid] = self.geo_json.features[-1]
             else:
                 if subid_count != obs['howMany']:
-                    print(
+                    logging.warning(
                         f"Count for {subid} has changed", 
                         f"from {obs['howMany']} to {subid_count}"
                     )
@@ -236,7 +245,68 @@ class EbirdManager:
     def names_of_duplicated_sites(self):
         return sorted(list(self.survey_sites[self.survey_sites.duplicated()].NAME))
 
+    def import_scouting_areas(self, fname="scouting_regions.shp"):
+        self.scouting_areas = gpd.read_file(fname)
+
+    def _global_id_is_unique(self, entry):
+        if len(entry) != 1:
+            # TODO: Should this be a critical error?
+            raise IndexError(
+                    f"There should only be 1 entry with global ID "
+                    f"'{entry.GlobalID.iloc[0]}' however there are "
+                    f"{len(entry)} entries with that ID"
+                )
+        else:
+            return True
+
+    def find_scouting_area_for_site(self, global_id):
+        entry = self.survey_sites[self.survey_sites.GlobalID == global_id]
+
+        try:
+            if self._global_id_is_unique(entry):
+                entry = entry.iloc[0]
+            else:
+                return False
+        except IndexError as ie:
+            logger.error(ie)
+
+        for ind in self.scouting_areas.index:
+            if entry.geometry.within(self.scouting_areas.loc[ind, 'geometry']):
+                return self.scouting_areas.loc[ind, "id"]
+
+        return None
+
+    def verify_survey_sites(self):
+        valid = True
+        duplicated_global_ids = set(
+            self.survey_sites[self.survey_sites.GlobalID.duplicated()].GlobalID
+        )
+
+        if duplicated_global_ids:
+            valid = False
+            for duplicated_global_id in duplicated_global_ids:
+                ids = self.survey_sites[self.survey_sites.GlobalID == duplicated_global_id]
+                logger.error(
+                    f"{duplicated_global_id} is the Global ID for {list(ids.index)}"
+                )
+        return valid
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--level',
+        '-l',
+        required=False,
+        type=str.upper,
+        choices=["DEBUG", "INFO", "WARNING", "WARN", "CRITICAL", "ERROR"]
+    )
+    parser.add_argument('--pull', '-p', action="store_true", required=False)
+    parser.add_argument('--verify', '-v', action="store_true", required=False)
+    args = parser.parse_args()
+
+    if args.level:
+        logger.setLevel(getattr(logging, args.level))
+
     API_KEY = os.environ.get("API_KEY")
 
     if not API_KEY:
@@ -246,6 +316,14 @@ if __name__ == '__main__':
     species_codes = ['motduc', 'x00422', 'motduc1', 'y00632']
 
     ebird_man = EbirdManager(API_KEY, "ebird.geojson", targets=species_codes)
-    new_count = ebird_man.pull_new_entries(region_code, save=True)
-    print(f"Saved {new_count} new entries")
 
+    if args.pull:
+        logger.info("Pulling data...")
+        new_count = ebird_man.pull_new_entries(region_code, save=True)
+        logger.info(f"Saved {new_count} new entries")
+
+    if args.verify:
+        ebird_man.import_survey_sites()
+        ebird_man.import_scouting_areas()
+
+        ebird_man.verify_survey_sites()
