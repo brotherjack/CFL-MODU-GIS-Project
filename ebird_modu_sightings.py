@@ -2,6 +2,7 @@
 from typing import List, Tuple, Optional
 import argparse
 from collections import OrderedDict
+from IPython.terminal.embed import InteractiveShellEmbed
 from ebird.api import get_species_observations, get_regions
 from geojson import Feature, Point, FeatureCollection
 from geojson import dump as geojson_dump
@@ -19,6 +20,30 @@ else:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
     logger.addHandler(handler)
+
+try:
+    get_ipython
+except NameError:
+    banner=exit_msg=''
+banner = """
+                   ________________    __  _______  ____  __  __
+                  / ____/ ___/ ___/   /  |/  / __ \/ __ \/ / / /
+                 / /    \__ \\__ \   / /|_/ / / / / / / / / / /
+                / /___ ___/ /__/ /  / /  / / /_/ / /_/ / /_/ /
+                \____//____/____/  /_/  /_/\____/_____/\____/
+
+                         +-+-+ +-+-+ +-+-+-+-+-+-+-+-+
+                         |I|T| |I|S| |D|U|C|K|T|I|M|E|
+                         +-+-+ +-+-+ +-+-+-+-+-+-+-+-+
+
+"""
+exit_msg = """
+            +-+-+-+ +-+-+-+ +-+-+-+-+-+ +-+-+-+-+-+ +-+-+-+-+-+-+-+
+            |S|e|e| |Y|o|u| |L|a|t|e|r| |S|p|a|c|e| |D|u|c|k|b|o|i|
+            +-+-+-+ +-+-+-+ +-+-+-+-+-+ +-+-+-+-+-+ +-+-+-+-+-+-+-+
+"""
+ipshell = InteractiveShellEmbed(banner1=banner, exit_msg=exit_msg)
+
 
 class EbirdManager:
     def __init__(self, api_key, fname=None, targets=[]):
@@ -302,6 +327,7 @@ if __name__ == '__main__':
     )
     parser.add_argument('--pull', '-p', action="store_true", required=False)
     parser.add_argument('--verify', '-v', action="store_true", required=False)
+    parser.add_argument('--interpreter', '-i', action="store_true", required=False)
     args = parser.parse_args()
 
     if args.level:
@@ -327,3 +353,7 @@ if __name__ == '__main__':
         ebird_man.import_scouting_areas()
 
         ebird_man.verify_survey_sites()
+
+    if args.interpreter:
+        ipshell()
+
