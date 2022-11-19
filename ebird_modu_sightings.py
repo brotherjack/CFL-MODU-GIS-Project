@@ -10,7 +10,7 @@ from geojson import load as geojson_load
 import numpy as np
 import geopandas as gpd
 import pandas as pd
-import logging, os, re, sys
+import logging, os, re, uuid
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -316,6 +316,32 @@ class EbirdManager:
                 )
         return valid
 
+    def add_global_id(self, ind, overwrite=False):
+        lname = {self.survey_sites.loc[ind, 'NAME']}
+        if self.survey_sites.loc[ind].notnull()['GlobalID']:
+            old_id = self.survey_sites.loc[ind, 'GlobalID']
+            if overwrite:
+                new_id = "{" + f"{uuid.uuid4()}".upper() +"}"
+                logger.info(
+                    f"Overwritting GlobalID for {lname} "
+                    f"from {old_id} to {new_id}"
+                )
+            else:
+                logger.warning(
+                    f"Will not update {lname} GlobalID as it already exsists"
+                    f"as {old_id} and overwrite is set as 'False'"
+                )
+        else:
+            new_id = "{" + f"{uuid.uuid4()}".upper() +"}"
+            self.survey_sites.loc[ind, 'GlobalID'] = new_id
+            logger.info(f"Added GlobalID {new_id} to {lname}")
+
+    def add_global_ids(self):
+        for ind in self.survey_sites.index:
+            if self.survey_sites.loc[ind].isnull()['GlobalID']:
+                self.add_global_id(ind)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -325,6 +351,7 @@ if __name__ == '__main__':
         type=str.upper,
         choices=["DEBUG", "INFO", "WARNING", "WARN", "CRITICAL", "ERROR"]
     )
+
     parser.add_argument('--pull', '-p', action="store_true", required=False)
     parser.add_argument('--verify', '-v', action="store_true", required=False)
     parser.add_argument('--interpreter', '-i', action="store_true", required=False)
