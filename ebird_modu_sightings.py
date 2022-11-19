@@ -12,6 +12,7 @@ import geopandas as gpd
 import pandas as pd
 import logging, os, re, unicodedata, uuid
 
+
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -26,6 +27,8 @@ class bcolors:
 
 CHECK_MARK = unicodedata.lookup('WHITE HEAVY CHECK MARK')
 NOPE_MARK =  unicodedata.lookup('NO ENTRY SIGN')
+THUMBS_UP = u'\U0001f44d'
+SHRUGGIE = "¯\_(ツ)_/¯"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -319,7 +322,7 @@ class EbirdManager:
 
         return None
 
-    def verify_survey_sites(self):
+    def verify_global_ids_unique(self):
         valid = True
         duplicated_global_ids = set(
             self.survey_sites[self.survey_sites.GlobalID.duplicated()].GlobalID
@@ -330,9 +333,27 @@ class EbirdManager:
             for duplicated_global_id in duplicated_global_ids:
                 ids = self.survey_sites[self.survey_sites.GlobalID == duplicated_global_id]
                 logger.error(
-                    f"{duplicated_global_id} is the Global ID for {list(ids.index)}"
+                    f"{bcolors.FAIL} {duplicated_global_id} is the Global ID "
+                    f"for {list(ids.index)} {bcolors.ENDC}"
                 )
+
+        if valid:
+            logger.info(f"{bcolors.OKGREEN} {CHECK_MARK} Global IDs are unique {THUMBS_UP} {bcolors.ENDC}")
         return valid
+
+    def verify_trapping_areas_correct(self):
+        logger.warning(f"{bcolors.FAIL} Whoops, haven't implemented this yet {SHRUGGIE} {bcolors.ENDC}")
+
+    def verify_survey_sites(self, only=[]):
+        VERIFICATIONS = set([
+            "GLOBAL_IDS_UNIQUE",
+            "TRAPPING_AREAS_CORRECT"
+        ]).difference(set([s.upper() for s in only]))
+
+        return all([
+            getattr(self, f"verify_{verify_suffix.lower()}")()
+            for verify_suffix in VERIFICATIONS
+        ])
 
     def add_global_id(self, ind, overwrite=False):
         lname = {self.survey_sites.loc[ind, 'NAME']}
