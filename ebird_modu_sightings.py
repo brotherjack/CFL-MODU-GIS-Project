@@ -322,6 +322,12 @@ class EbirdManager:
 
         return None
 
+    def validation_pass(self, msg, level="info"):
+        getattr(logger, level)(f"{bcolors.OKGREEN} {msg} {bcolors.ENDC}")
+
+    def validation_fail(self, msg, level="warning"):
+        getattr(logger, level)(f"{bcolors.FAIL} {msg} {bcolors.ENDC}")
+
     def verify_global_ids_unique(self):
         valid = True
         duplicated_global_ids = set(
@@ -332,17 +338,59 @@ class EbirdManager:
             valid = False
             for duplicated_global_id in duplicated_global_ids:
                 ids = self.survey_sites[self.survey_sites.GlobalID == duplicated_global_id]
-                logger.error(
-                    f"{bcolors.FAIL} {duplicated_global_id} is the Global ID "
-                    f"for {list(ids.index)} {bcolors.ENDC}"
+                self.validation_fail(
+                    f"{duplicated_global_id} is the Global ID for {list(ids.index)}"
                 )
 
         if valid:
-            logger.info(f"{bcolors.OKGREEN} {CHECK_MARK} Global IDs are unique {THUMBS_UP} {bcolors.ENDC}")
+            self.validation_pass(
+                f"{bcolors.OKGREEN} {CHECK_MARK} Global IDs are unique "
+                f"{THUMBS_UP} {bcolors.ENDC}"
+            )
         return valid
 
     def verify_trapping_areas_correct(self):
-        logger.warning(f"{bcolors.FAIL} Whoops, haven't implemented this yet {SHRUGGIE} {bcolors.ENDC}")
+        valid = True
+        for _ind,row in self.survey_sites.iterrows():
+            found_area = self.find_scouting_area_for_site(row.GlobalID)
+            if row.AREA:
+                if str(row.AREA) != str(found_area):
+                    valid = False
+                    self.validation_fail(
+                        f"Trapping area for {row.NAME} - {row.GlobalID} is "
+                        f"incorrect. Is marked as {row.AREA} should be "
+                        f"{found_area}"
+                    )
+                else:
+                    self.validation_pass(
+                        f"Trapping area for {row.NAME} is correct as {row.AREA}",
+                        level="debug"
+                    )
+            else:
+                if found_area:
+                    valid = False
+                    self.validation_fail(
+                        f"Trapping area for {row.NAME} is blank but should "
+                        f"be {found_area}"
+                    )
+                else:
+                    self.validation_pass(
+                        f"Trapping area for {row.NAME} is blank "
+                        f"{bcolors.UNDERLINE}and should be so",
+                        level="debug"
+                    )
+
+        if valid:
+            self.validation_pass(
+                f"{CHECK_MARK} All survey sites have correct trapping "
+                f"areas {THUMBS_UP}"
+            )
+        else:
+            self.validation_fail(
+                f"{NOPE_MARK} At least some survey sites are wrong"
+            )
+
+        return valid
 
     def verify_survey_sites(self, only=[]):
         VERIFICATIONS = set([
@@ -422,4 +470,3 @@ if __name__ == '__main__':
 
     if args.interpreter:
         ipshell()
-
