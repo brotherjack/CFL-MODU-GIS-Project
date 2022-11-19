@@ -10,7 +10,22 @@ from geojson import load as geojson_load
 import numpy as np
 import geopandas as gpd
 import pandas as pd
-import logging, os, re, uuid
+import logging, os, re, unicodedata, uuid
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
+CHECK_MARK = unicodedata.lookup('WHITE HEAVY CHECK MARK')
+NOPE_MARK =  unicodedata.lookup('NO ENTRY SIGN')
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -28,7 +43,7 @@ except NameError:
 banner = """
                    ________________    __  _______  ____  __  __
                   / ____/ ___/ ___/   /  |/  / __ \/ __ \/ / / /
-                 / /    \__ \\__ \   / /|_/ / / / / / / / / / /
+                 / /    \__ \ \__\   / /|_/ / / / / / / / / / /
                 / /___ ___/ /__/ /  / /  / / /_/ / /_/ / /_/ /
                 \____//____/____/  /_/  /_/\____/_____/\____/
 
@@ -42,7 +57,10 @@ exit_msg = """
             |S|e|e| |Y|o|u| |L|a|t|e|r| |S|p|a|c|e| |D|u|c|k|b|o|i|
             +-+-+-+ +-+-+-+ +-+-+-+-+-+ +-+-+-+-+-+ +-+-+-+-+-+-+-+
 """
-ipshell = InteractiveShellEmbed(banner1=banner, exit_msg=exit_msg)
+ipshell = InteractiveShellEmbed(
+    banner1=f"{bcolors.FAIL} {banner} {bcolors.ENDC}", 
+    exit_msg=f"{bcolors.FAIL} {exit_msg} {bcolors.ENDC}"
+)
 
 
 class EbirdManager:
