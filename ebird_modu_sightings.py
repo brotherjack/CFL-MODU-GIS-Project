@@ -75,6 +75,7 @@ class EbirdManager:
         self.geo_json = FeatureCollection(features=[])
         self._ebird_regex = re.compile("S[0-9]{9}") # Regex for ebird checklist IDs
         self._raw_pulls = []
+        self._trapping_area_cache = None
         self.modu_site_reports = None
     
     def _modu_count_column_mapper(self, col):
@@ -351,7 +352,7 @@ class EbirdManager:
             )
         return valid
 
-    def verify_trapping_area(self, ind):
+    def verify_trapping_area(self, ind, supress_log=False):
         row = self.survey_sites.loc[ind, :]
         found_area = self.find_scouting_area_for_site(row.GlobalID)
         if row.AREA:
@@ -359,26 +360,32 @@ class EbirdManager:
                 self.validation_fail(
                     f"Trapping area for {row.NAME} - {row.GlobalID} is "
                     f"incorrect. Is marked as {row.AREA} should be "
-                    f"{found_area}"
+                    f"{found_area}",
+                    suppress=supress_log
                 )
+                self._trapping_area_cache = str(found_area)
                 return False
             else:
                 self.validation_pass(
                     f"Trapping area for {row.NAME} is correct as {row.AREA}",
-                    level="debug"
+                    level="debug",
+                    suppress=supress_log
                 )
         else:
             if found_area:
                 self.validation_fail(
                     f"Trapping area for {row.NAME} is blank but should "
-                    f"be {found_area}"
+                    f"be {found_area}",
+                    suppress=supress_log
                 )
+                self._trapping_area_cache = str(found_area)
                 return False
             else:
                 self.validation_pass(
                     f"Trapping area for {row.NAME} is blank "
                     f"{bcolors.UNDERLINE}and should be so",
-                    level="debug"
+                    level="debug",
+                    suppress=supress_log
                 )
         return True
 
@@ -436,6 +443,17 @@ class EbirdManager:
             if self.survey_sites.loc[ind].isnull()['GlobalID']:
                 self.add_global_id(ind)
 
+    def correct_trapping_areas(self, supress_log=True):
+        for ind in self.survey_sites.index:
+            if not self.verify_trapping_area(ind, supress_log):
+                name, area, gid = self.survey_sites.loc[ind, ["NAME", "AREA", "GlobalID"]]
+                self.survey_sites.loc[ind, "AREA"] = self._trapping_area_cache
+                logger.info(
+                    f"Corrected trapping area for {name} - {gid}, "
+                    f"from '{area}' to '{self._trapping_area_cache}'"
+                )
+        logger.info(f"Corrections completed {THUMBS_UP}")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -450,6 +468,7 @@ if __name__ == '__main__':
     parser.add_argument('--pull', '-p', action="store_true", required=False)
     parser.add_argument('--verify', '-v', action="store_true", required=False)
     parser.add_argument('--interpreter', '-i', action="store_true", required=False)
+    parser.add_argument('--correct', '-c', action="store_true", required=False)
     args = parser.parse_args()
 
     if args.level:
@@ -470,11 +489,15 @@ if __name__ == '__main__':
         new_count = ebird_man.pull_new_entries(region_code, save=True)
         logger.info(f"Saved {new_count} new entries")
 
-    if args.verify:
-        ebird_man.import_survey_sites()
-        ebird_man.import_scouting_areas()
+    ebird_man.import_survey_sites()
+    ebird_man.import_scouting_areas()
 
+    if args.verify:
         ebird_man.verify_survey_sites()
+
+    if args.correct:
+        ebird_man.correct_trapping_areas()
+        ebird_man.export_survey_sites()
 
     if args.interpreter:
         ipshell()
