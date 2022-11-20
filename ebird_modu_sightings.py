@@ -322,11 +322,13 @@ class EbirdManager:
 
         return None
 
-    def validation_pass(self, msg, level="info"):
-        getattr(logger, level)(f"{bcolors.OKGREEN} {msg} {bcolors.ENDC}")
+    def validation_pass(self, msg, level="info", suppress=False):
+        if not suppress:
+            getattr(logger, level)(f"{bcolors.OKGREEN} {msg} {bcolors.ENDC}")
 
-    def validation_fail(self, msg, level="warning"):
-        getattr(logger, level)(f"{bcolors.FAIL} {msg} {bcolors.ENDC}")
+    def validation_fail(self, msg, level="warning", suppress=False):
+        if not suppress:
+            getattr(logger, level)(f"{bcolors.FAIL} {msg} {bcolors.ENDC}")
 
     def verify_global_ids_unique(self):
         valid = True
