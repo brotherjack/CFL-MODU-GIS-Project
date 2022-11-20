@@ -351,36 +351,42 @@ class EbirdManager:
             )
         return valid
 
-    def verify_trapping_areas_correct(self):
-        valid = True
-        for _ind,row in self.survey_sites.iterrows():
-            found_area = self.find_scouting_area_for_site(row.GlobalID)
-            if row.AREA:
-                if str(row.AREA) != str(found_area):
-                    valid = False
-                    self.validation_fail(
-                        f"Trapping area for {row.NAME} - {row.GlobalID} is "
-                        f"incorrect. Is marked as {row.AREA} should be "
-                        f"{found_area}"
-                    )
-                else:
-                    self.validation_pass(
-                        f"Trapping area for {row.NAME} is correct as {row.AREA}",
-                        level="debug"
-                    )
+    def verify_trapping_area(self, ind):
+        row = self.survey_sites.loc[ind, :]
+        found_area = self.find_scouting_area_for_site(row.GlobalID)
+        if row.AREA:
+            if str(row.AREA) != str(found_area):
+                self.validation_fail(
+                    f"Trapping area for {row.NAME} - {row.GlobalID} is "
+                    f"incorrect. Is marked as {row.AREA} should be "
+                    f"{found_area}"
+                )
+                return False
             else:
-                if found_area:
-                    valid = False
-                    self.validation_fail(
-                        f"Trapping area for {row.NAME} is blank but should "
-                        f"be {found_area}"
-                    )
-                else:
-                    self.validation_pass(
-                        f"Trapping area for {row.NAME} is blank "
-                        f"{bcolors.UNDERLINE}and should be so",
-                        level="debug"
-                    )
+                self.validation_pass(
+                    f"Trapping area for {row.NAME} is correct as {row.AREA}",
+                    level="debug"
+                )
+        else:
+            if found_area:
+                self.validation_fail(
+                    f"Trapping area for {row.NAME} is blank but should "
+                    f"be {found_area}"
+                )
+                return False
+            else:
+                self.validation_pass(
+                    f"Trapping area for {row.NAME} is blank "
+                    f"{bcolors.UNDERLINE}and should be so",
+                    level="debug"
+                )
+        return True
+
+    def verify_trapping_areas(self):
+        valid = True
+        for ind in self.survey_sites.index:
+            if not self.verify_trapping_area(ind):
+                valid = False
 
         if valid:
             self.validation_pass(
@@ -397,7 +403,7 @@ class EbirdManager:
     def verify_survey_sites(self, only=[]):
         VERIFICATIONS = set([
             "GLOBAL_IDS_UNIQUE",
-            "TRAPPING_AREAS_CORRECT"
+            "TRAPPING_AREAS"
         ]).difference(set([s.upper() for s in only]))
 
         return all([
