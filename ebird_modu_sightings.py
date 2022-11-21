@@ -284,7 +284,7 @@ class EbirdManager:
             pd.read_excel(fname)
         )
 
-    def import_survey_sites(self, fname="survey_sites.gpkg", layer='orlando_parks'):
+    def import_survey_sites(self, fname="survey_sites.gpkg", layer='survey_sites'):
         """Imports survey sites from geopackage
         """
         self.survey_sites = gpd.read_file(fname, layer=layer)
@@ -292,7 +292,7 @@ class EbirdManager:
             setattr(self.survey_sites, introw, getattr(self.survey_sites, introw).convert_dtypes())
         self.survey_sites.replace({np.nan: None}, inplace=True)
 
-    def export_survey_sites(self, fname="survey_sites.gpkg", layer='orlando_parks'):
+    def export_survey_sites(self, fname="survey_sites.gpkg", layer='survey_sites'):
         self.survey_sites.to_file(fname, layer=layer, driver="GPKG")
         
     def names_of_duplicated_sites(self):
