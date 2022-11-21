@@ -251,6 +251,12 @@ class EbirdManager:
         newCount = 0
         for subid, obs in species_obs.items():
             subid_count = self.indiv(subid)
+            if not "howMany" in obs.keys():
+                logger.warning(
+                    f"Observation for checklist {obs['subId']} does not "
+                    "count individuals and will be ignored"
+                )
+                continue
             if subid not in gjentries:
                 newCount += 1
                 self.geo_json.features.append(self._create_feature_from_observation(obs))
