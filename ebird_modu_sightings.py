@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from typing import List, Tuple, Optional
+import argparse
 from collections import OrderedDict
+from IPython.terminal.embed import InteractiveShellEmbed
 from ebird.api import get_species_observations, get_regions
 from geojson import Feature, Point, FeatureCollection
 from geojson import dump as geojson_dump
@@ -8,7 +10,60 @@ from geojson import load as geojson_load
 import numpy as np
 import geopandas as gpd
 import pandas as pd
-import os, re
+import logging, os, re, unicodedata, uuid
+
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
+CHECK_MARK = unicodedata.lookup('WHITE HEAVY CHECK MARK')
+NOPE_MARK =  unicodedata.lookup('NO ENTRY SIGN')
+THUMBS_UP = u'\U0001f44d'
+SHRUGGIE = "¯\_(ツ)_/¯"
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if logger.hasHandlers():
+    logger.handlers[0].setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+else:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+    logger.addHandler(handler)
+
+try:
+    get_ipython
+except NameError:
+    banner=exit_msg=''
+banner = """
+                   ________________    __  _______  ____  __  __
+                  / ____/ ___/ ___/   /  |/  / __ \/ __ \/ / / /
+                 / /    \__ \ \__\   / /|_/ / / / / / / / / / /
+                / /___ ___/ /__/ /  / /  / / /_/ / /_/ / /_/ /
+                \____//____/____/  /_/  /_/\____/_____/\____/
+
+                         +-+-+ +-+-+ +-+-+-+-+-+-+-+-+
+                         |I|T| |I|S| |D|U|C|K|T|I|M|E|
+                         +-+-+ +-+-+ +-+-+-+-+-+-+-+-+
+
+"""
+exit_msg = """
+            +-+-+-+ +-+-+-+ +-+-+-+-+-+ +-+-+-+-+-+-+-+
+            |S|e|e| |Y|o|u| |S|p|a|c|e| |D|u|c|k|b|o|i|
+            +-+-+-+ +-+-+-+ +-+-+-+-+-+ +-+-+-+-+-+-+-+
+"""
+ipshell = InteractiveShellEmbed(
+    banner1=f"{bcolors.FAIL} {banner} {bcolors.ENDC}", 
+    exit_msg=f"{bcolors.FAIL} {exit_msg} {bcolors.ENDC}"
+)
 
 
 class EbirdManager:
@@ -20,6 +75,7 @@ class EbirdManager:
         self.geo_json = FeatureCollection(features=[])
         self._ebird_regex = re.compile("S[0-9]{9}") # Regex for ebird checklist IDs
         self._raw_pulls = []
+        self._trapping_area_cache = None
         self.modu_site_reports = None
     
     def _modu_count_column_mapper(self, col):
@@ -117,7 +173,7 @@ class EbirdManager:
             if self._is_feature_collection(gjson):
                 self.geo_json = gjson
                 self._setup_features()
-                print(f"Loaded {len(self.features)} ebird checklist IDs")
+                logger.info(f"Loaded {len(self.features)} ebird checklist IDs")
             else:
                 raise IOError(f"File '{fname}' is not a feature collection!")
 
@@ -146,11 +202,11 @@ class EbirdManager:
                     observations[entry['subId']]['howMany'] += entry['howMany']
                 else:
                     observations[entry['subId']] = entry 
-            print(f"Pulled {len(obs)} from ebird for {species_code} in {region_code}")
+            logging.info(f"Pulled {len(obs)} from ebird for {species_code} in {region_code}")
             if cross_count > 0:
-                print(f"Found {cross_count} 'lumped' species")
+                logging.debug(f"Found {cross_count} 'lumped' species")
 
-        print(f"Pulled {len(self._raw_pulls)} from ebird for {species_codes} in {region_code}")
+        logging.debug(f"Pulled {len(self._raw_pulls)} from ebird for {species_codes} in {region_code}")
         return observations
 
     def _create_feature_from_observation(self, obs):
@@ -195,13 +251,19 @@ class EbirdManager:
         newCount = 0
         for subid, obs in species_obs.items():
             subid_count = self.indiv(subid)
+            if not "howMany" in obs.keys():
+                logger.warning(
+                    f"Observation for checklist {obs['subId']} does not "
+                    "count individuals and will be ignored"
+                )
+                continue
             if subid not in gjentries:
                 newCount += 1
                 self.geo_json.features.append(self._create_feature_from_observation(obs))
                 self.features[subid] = self.geo_json.features[-1]
             else:
                 if subid_count != obs['howMany']:
-                    print(
+                    logging.warning(
                         f"Count for {subid} has changed", 
                         f"from {obs['howMany']} to {subid_count}"
                     )
@@ -222,21 +284,202 @@ class EbirdManager:
             pd.read_excel(fname)
         )
 
-    def import_survey_sites(self, fname="survey_sites.gpkg", layer='orlando_parks'):
+    def import_survey_sites(self, fname="survey_sites.gpkg", layer='survey_sites'):
         """Imports survey sites from geopackage
         """
         self.survey_sites = gpd.read_file(fname, layer=layer)
-        for introw in ['MODU_COUNT', 'MUDU_COUNT', 'WHIB_COUNT', 'GRGO_COUNT', 'AREA']:
+        for introw in ['MODU_COUNT', 'MUDU_COUNT', 'WHIB_COUNT', 'GRGO_COUNT', 'AREA', 'OBJECTID']:
             setattr(self.survey_sites, introw, getattr(self.survey_sites, introw).convert_dtypes())
         self.survey_sites.replace({np.nan: None}, inplace=True)
 
-    def export_survey_sites(self, fname="survey_sites.gpkg", layer='orlando_parks'):
+    def export_survey_sites(self, fname="survey_sites.gpkg", layer='survey_sites'):
         self.survey_sites.to_file(fname, layer=layer, driver="GPKG")
         
     def names_of_duplicated_sites(self):
         return sorted(list(self.survey_sites[self.survey_sites.duplicated()].NAME))
 
+    def import_scouting_areas(self, fname="scouting_regions.shp"):
+        self.scouting_areas = gpd.read_file(fname)
+
+    def _global_id_is_unique(self, entry):
+        if len(entry) != 1:
+            # TODO: Should this be a critical error?
+            raise IndexError(
+                    f"There should only be 1 entry with global ID "
+                    f"'{entry.GlobalID.iloc[0]}' however there are "
+                    f"{len(entry)} entries with that ID"
+                )
+        else:
+            return True
+
+    def find_scouting_area_for_site(self, global_id):
+        entry = self.survey_sites[self.survey_sites.GlobalID == global_id]
+
+        try:
+            if self._global_id_is_unique(entry):
+                entry = entry.iloc[0]
+            else:
+                return False
+        except IndexError as ie:
+            logger.error(ie)
+
+        for ind in self.scouting_areas.index:
+            if entry.geometry.within(self.scouting_areas.loc[ind, 'geometry']):
+                return self.scouting_areas.loc[ind, "id"]
+
+        return None
+
+    def validation_pass(self, msg, level="info", suppress=False):
+        if not suppress:
+            getattr(logger, level)(f"{bcolors.OKGREEN} {msg} {bcolors.ENDC}")
+
+    def validation_fail(self, msg, level="warning", suppress=False):
+        if not suppress:
+            getattr(logger, level)(f"{bcolors.FAIL} {msg} {bcolors.ENDC}")
+
+    def verify_global_ids_unique(self):
+        valid = True
+        duplicated_global_ids = set(
+            self.survey_sites[self.survey_sites.GlobalID.duplicated()].GlobalID
+        )
+
+        if duplicated_global_ids:
+            valid = False
+            for duplicated_global_id in duplicated_global_ids:
+                ids = self.survey_sites[self.survey_sites.GlobalID == duplicated_global_id]
+                self.validation_fail(
+                    f"{duplicated_global_id} is the Global ID for {list(ids.index)}"
+                )
+
+        if valid:
+            self.validation_pass(
+                f"{bcolors.OKGREEN} {CHECK_MARK} Global IDs are unique "
+                f"{THUMBS_UP} {bcolors.ENDC}"
+            )
+        return valid
+
+    def verify_trapping_area(self, ind, supress_log=False):
+        row = self.survey_sites.loc[ind, :]
+        found_area = self.find_scouting_area_for_site(row.GlobalID)
+        if row.AREA:
+            if str(row.AREA) != str(found_area):
+                self.validation_fail(
+                    f"Trapping area for {row.NAME} - {row.GlobalID} is "
+                    f"incorrect. Is marked as {row.AREA} should be "
+                    f"{found_area}",
+                    suppress=supress_log
+                )
+                self._trapping_area_cache = str(found_area)
+                return False
+            else:
+                self.validation_pass(
+                    f"Trapping area for {row.NAME} is correct as {row.AREA}",
+                    level="debug",
+                    suppress=supress_log
+                )
+        else:
+            if found_area:
+                self.validation_fail(
+                    f"Trapping area for {row.NAME} is blank but should "
+                    f"be {found_area}",
+                    suppress=supress_log
+                )
+                self._trapping_area_cache = str(found_area)
+                return False
+            else:
+                self.validation_pass(
+                    f"Trapping area for {row.NAME} is blank "
+                    f"{bcolors.UNDERLINE}and should be so",
+                    level="debug",
+                    suppress=supress_log
+                )
+        return True
+
+    def verify_trapping_areas(self):
+        valid = True
+        for ind in self.survey_sites.index:
+            if not self.verify_trapping_area(ind):
+                valid = False
+
+        if valid:
+            self.validation_pass(
+                f"{CHECK_MARK} All survey sites have correct trapping "
+                f"areas {THUMBS_UP}"
+            )
+        else:
+            self.validation_fail(
+                f"{NOPE_MARK} At least some survey sites are wrong"
+            )
+
+        return valid
+
+    def verify_survey_sites(self, only=[]):
+        VERIFICATIONS = set([
+            "GLOBAL_IDS_UNIQUE",
+            "TRAPPING_AREAS"
+        ]).difference(set([s.upper() for s in only]))
+
+        return all([
+            getattr(self, f"verify_{verify_suffix.lower()}")()
+            for verify_suffix in VERIFICATIONS
+        ])
+
+    def add_global_id(self, ind, overwrite=False):
+        lname = {self.survey_sites.loc[ind, 'NAME']}
+        if self.survey_sites.loc[ind].notnull()['GlobalID']:
+            old_id = self.survey_sites.loc[ind, 'GlobalID']
+            if overwrite:
+                new_id = "{" + f"{uuid.uuid4()}".upper() +"}"
+                logger.info(
+                    f"Overwritting GlobalID for {lname} "
+                    f"from {old_id} to {new_id}"
+                )
+            else:
+                logger.warning(
+                    f"Will not update {lname} GlobalID as it already exsists"
+                    f"as {old_id} and overwrite is set as 'False'"
+                )
+        else:
+            new_id = "{" + f"{uuid.uuid4()}".upper() +"}"
+            self.survey_sites.loc[ind, 'GlobalID'] = new_id
+            logger.info(f"Added GlobalID {new_id} to {lname}")
+
+    def add_global_ids(self):
+        for ind in self.survey_sites.index:
+            if self.survey_sites.loc[ind].isnull()['GlobalID']:
+                self.add_global_id(ind)
+
+    def correct_trapping_areas(self, supress_log=True):
+        for ind in self.survey_sites.index:
+            if not self.verify_trapping_area(ind, supress_log):
+                name, area, gid = self.survey_sites.loc[ind, ["NAME", "AREA", "GlobalID"]]
+                self.survey_sites.loc[ind, "AREA"] = self._trapping_area_cache
+                logger.info(
+                    f"Corrected trapping area for {name} - {gid}, "
+                    f"from '{area}' to '{self._trapping_area_cache}'"
+                )
+        logger.info(f"Corrections completed {THUMBS_UP}")
+
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--level',
+        '-l',
+        required=False,
+        type=str.upper,
+        choices=["DEBUG", "INFO", "WARNING", "WARN", "CRITICAL", "ERROR"]
+    )
+
+    parser.add_argument('--pull', '-p', action="store_true", required=False)
+    parser.add_argument('--verify', '-v', action="store_true", required=False)
+    parser.add_argument('--interpreter', '-i', action="store_true", required=False)
+    parser.add_argument('--correct', '-c', action="store_true", required=False)
+    args = parser.parse_args()
+
+    if args.level:
+        logger.setLevel(getattr(logging, args.level))
+
     API_KEY = os.environ.get("API_KEY")
 
     if not API_KEY:
@@ -246,6 +489,21 @@ if __name__ == '__main__':
     species_codes = ['motduc', 'x00422', 'motduc1', 'y00632']
 
     ebird_man = EbirdManager(API_KEY, "ebird.geojson", targets=species_codes)
-    new_count = ebird_man.pull_new_entries(region_code, save=True)
-    print(f"Saved {new_count} new entries")
 
+    if args.pull:
+        logger.info("Pulling data...")
+        new_count = ebird_man.pull_new_entries(region_code, save=True)
+        logger.info(f"Saved {new_count} new entries")
+
+    ebird_man.import_survey_sites()
+    ebird_man.import_scouting_areas()
+
+    if args.verify:
+        ebird_man.verify_survey_sites()
+
+    if args.correct:
+        ebird_man.correct_trapping_areas()
+        ebird_man.export_survey_sites()
+
+    if args.interpreter:
+        ipshell()
