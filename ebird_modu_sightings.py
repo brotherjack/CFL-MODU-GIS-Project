@@ -322,6 +322,7 @@ class EbirdManager:
                 return False
         except IndexError as ie:
             logger.error(ie)
+            return False
 
         for ind in self.scouting_areas.index:
             if entry.geometry.within(self.scouting_areas.loc[ind, 'geometry']):
@@ -460,6 +461,51 @@ class EbirdManager:
                 )
         logger.info(f"Corrections completed {THUMBS_UP}")
 
+    def verify_site_report_identifiers(self):
+        valid = True
+        df = self.survey_sites
+        for ind, row in ebird_man.modu_site_reports.iterrows():
+            if len(df[df.NAME == row.location_name]) != 1:
+                s2id = self.find_scouting_area_for_site(row.global_id)
+                if s2id:
+                    if len(df[df.NAME == row.location_name]) < 1:
+                        logger.warning(
+                            f"{bcolors.OKCYAN}Looks like '{row.location_name}' is "
+                            f"'{self.survey_sites.loc[s2id, 'NAME']}' in GIS{bcolors.ENDC}"
+                        )
+                elif s2id != False:
+                    # A None result from `find_scouting_area_for_site` is just a NULL AREA
+                    continue 
+                else:    
+                    self.validation_fail(
+                        f"Site report {ind} {row.location_name} "
+                        f"with GID '{row.global_id}' not found in survey sites!"
+                    )
+                    valid = False
+        
+        if valid:
+            self.validation_pass(
+                f"{CHECK_MARK} All site reports map to survey sites {THUMBS_UP}"
+            )
+        else:
+            self.validation_fail(
+                f"{NOPE_MARK} At least 1 site report does not map to survey sites"
+            )
+        return valid
+
+
+    def check_site_reports(self, site_reports_file, only=[]):
+        CHECKS = set([
+            "SITE_REPORT_IDENTIFIERS"
+        ]).difference(set([s.upper() for s in only]))
+
+        self.import_modu_site_reports(site_reports_file)
+
+        return all([
+            getattr(self, f"verify_{verify_suffix.lower()}")()
+            for verify_suffix in CHECKS
+        ])
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -475,6 +521,7 @@ if __name__ == '__main__':
     parser.add_argument('--verify', '-v', action="store_true", required=False)
     parser.add_argument('--interpreter', '-i', action="store_true", required=False)
     parser.add_argument('--correct', '-c', action="store_true", required=False)
+    parser.add_argument('--review', '-r', action="store", required=False)
     args = parser.parse_args()
 
     if args.level:
@@ -500,6 +547,9 @@ if __name__ == '__main__':
 
     if args.verify:
         ebird_man.verify_survey_sites()
+
+    if args.review:
+        ebird_man.check_site_reports(args.review)
 
     if args.correct:
         ebird_man.correct_trapping_areas()
