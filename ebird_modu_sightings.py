@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from typing import List, Tuple, Optional
+from typing import List, Union
 import argparse
 from collections import OrderedDict
 from IPython.terminal.embed import InteractiveShellEmbed
@@ -127,6 +127,20 @@ class EbirdManager:
             return self.features[subid]['properties']['individuals']
         else:
             return -1
+
+    def checklist(self, ebird_id) -> Union[dict,  None]:
+        """Returns the entry from the ebird geojson, if it exists.
+
+        Checks to make sure that the ebird_id is unique.
+        """
+        ch = [
+            x for x in self.geo_json['features']
+            if x['properties']['ebird_subId'] == ebird_id
+        ]
+        assert len(ch) < 2,\
+            f"{len(ch)} checklists in ebird geojson have id '{ebird_id}'"
+        if len(ch) == 1:
+            return ch[0]
 
     def checklists_in_geojson(self) -> list:
         """Returns checklist ID's in geojson data
