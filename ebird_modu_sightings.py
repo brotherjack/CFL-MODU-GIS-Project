@@ -10,6 +10,7 @@ from geojson import load as geojson_load
 import numpy as np
 import geopandas as gpd
 import pandas as pd
+import datetime as dt
 import logging, os, re, unicodedata, uuid
 
 
@@ -519,6 +520,21 @@ class EbirdManager:
             getattr(self, f"verify_{verify_suffix.lower()}")()
             for verify_suffix in CHECKS
         ])
+
+    def freshness_fun(self, count, sighting_day, from_day=dt.datetime.today()):
+        if (from_day - sighting_day) == 0:
+            return float(count)
+        fscore = float(count) - ((from_day - sighting_day).days / 7.0)
+        if fscore < 0:
+            return 0
+        return fscore
+
+    def freshness_score(self, count, sighting_day, from_day=dt.datetime.today()):
+        freshness_score = self.freshness_fun(count, sighting_day, from_day)
+        return {
+            'freshness_score': freshness_score,
+            'freshness_reduction_percent': (1-(freshness_score / float(count)))*100
+        }
 
 
 if __name__ == '__main__':
