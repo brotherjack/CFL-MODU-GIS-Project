@@ -143,6 +143,17 @@ class EbirdManager:
         if len(ch) == 1:
             return ch[0]
 
+    def eject_ebird_sighting(self, ebird_id):
+        ind = [
+            ind for ind,x in enumerate(ebird_man.geo_json['features'])
+            if x['properties']['ebird_subId'] == ebird_id
+        ]
+        assert len(ind) < 2,\
+            f"{len(ind)} checklists in ebird geojson have id '{ebird_id}'"
+        if len(ind) == 1:
+            self.geo_json['features'].pop(ind[0])
+            logger.debug(f"Removed checklist ID '{ebird_id}' from geo_json")
+
     def checklists_in_geojson(self) -> list:
         """Returns checklist ID's in geojson data
         """
@@ -172,7 +183,7 @@ class EbirdManager:
     def _setup_features(self):
         for feature in self.geo_json.get('features'):
             subid = feature['properties']['ebird_subId']
-            assert(self.indiv(subid) == -1)
+            assert self.indiv(subid) == -1, f"Cannot load as {subid} already found in features"
             self.features[subid] = feature
 
     def load(self, fname=None):
