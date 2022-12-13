@@ -451,12 +451,15 @@ class EbirdManager:
             for verify_suffix in VERIFICATIONS
         ])
 
+    def generate_uuid(self):
+        return "{" + f"{uuid.uuid4()}".upper() +"}"
+
     def add_global_id(self, ind, overwrite=False):
         lname = {self.survey_sites.loc[ind, 'NAME']}
         if self.survey_sites.loc[ind].notnull()['GlobalID']:
             old_id = self.survey_sites.loc[ind, 'GlobalID']
             if overwrite:
-                new_id = "{" + f"{uuid.uuid4()}".upper() +"}"
+                new_id = self.generate_uuid()
                 logger.info(
                     f"Overwritting GlobalID for {lname} "
                     f"from {old_id} to {new_id}"
@@ -467,7 +470,7 @@ class EbirdManager:
                     f"as {old_id} and overwrite is set as 'False'"
                 )
         else:
-            new_id = "{" + f"{uuid.uuid4()}".upper() +"}"
+            new_id = self.generate_uuid()
             self.survey_sites.loc[ind, 'GlobalID'] = new_id
             logger.info(f"Added GlobalID {new_id} to {lname}")
 
