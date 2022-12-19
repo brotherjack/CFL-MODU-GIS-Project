@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from typing import List, Tuple, Optional
+from typing import List, Union
 import argparse
 from collections import OrderedDict
 from IPython.terminal.embed import InteractiveShellEmbed
@@ -10,6 +10,7 @@ from geojson import load as geojson_load
 import numpy as np
 import geopandas as gpd
 import pandas as pd
+import datetime as dt
 import logging, os, re, unicodedata, uuid
 
 
@@ -128,6 +129,31 @@ class EbirdManager:
         else:
             return -1
 
+    def checklist(self, ebird_id) -> Union[dict,  None]:
+        """Returns the entry from the ebird geojson, if it exists.
+
+        Checks to make sure that the ebird_id is unique.
+        """
+        ch = [
+            x for x in self.geo_json['features']
+            if x['properties']['ebird_subId'] == ebird_id
+        ]
+        assert len(ch) < 2,\
+            f"{len(ch)} checklists in ebird geojson have id '{ebird_id}'"
+        if len(ch) == 1:
+            return ch[0]
+
+    def eject_ebird_sighting(self, ebird_id):
+        ind = [
+            ind for ind,x in enumerate(ebird_man.geo_json['features'])
+            if x['properties']['ebird_subId'] == ebird_id
+        ]
+        assert len(ind) < 2,\
+            f"{len(ind)} checklists in ebird geojson have id '{ebird_id}'"
+        if len(ind) == 1:
+            self.geo_json['features'].pop(ind[0])
+            logger.debug(f"Removed checklist ID '{ebird_id}' from geo_json")
+
     def checklists_in_geojson(self) -> list:
         """Returns checklist ID's in geojson data
         """
@@ -157,7 +183,7 @@ class EbirdManager:
     def _setup_features(self):
         for feature in self.geo_json.get('features'):
             subid = feature['properties']['ebird_subId']
-            assert(self.indiv(subid) == -1)
+            assert self.indiv(subid) == -1, f"Cannot load as {subid} already found in features"
             self.features[subid] = feature
 
     def load(self, fname=None):
@@ -322,6 +348,7 @@ class EbirdManager:
                 return False
         except IndexError as ie:
             logger.error(ie)
+            return False
 
         for ind in self.scouting_areas.index:
             if entry.geometry.within(self.scouting_areas.loc[ind, 'geometry']):
@@ -424,12 +451,15 @@ class EbirdManager:
             for verify_suffix in VERIFICATIONS
         ])
 
+    def generate_uuid(self):
+        return "{" + f"{uuid.uuid4()}".upper() +"}"
+
     def add_global_id(self, ind, overwrite=False):
         lname = {self.survey_sites.loc[ind, 'NAME']}
         if self.survey_sites.loc[ind].notnull()['GlobalID']:
             old_id = self.survey_sites.loc[ind, 'GlobalID']
             if overwrite:
-                new_id = "{" + f"{uuid.uuid4()}".upper() +"}"
+                new_id = self.generate_uuid()
                 logger.info(
                     f"Overwritting GlobalID for {lname} "
                     f"from {old_id} to {new_id}"
@@ -440,7 +470,7 @@ class EbirdManager:
                     f"as {old_id} and overwrite is set as 'False'"
                 )
         else:
-            new_id = "{" + f"{uuid.uuid4()}".upper() +"}"
+            new_id = self.generate_uuid()
             self.survey_sites.loc[ind, 'GlobalID'] = new_id
             logger.info(f"Added GlobalID {new_id} to {lname}")
 
@@ -460,6 +490,66 @@ class EbirdManager:
                 )
         logger.info(f"Corrections completed {THUMBS_UP}")
 
+    def verify_site_report_identifiers(self):
+        valid = True
+        df = self.survey_sites
+        for ind, row in ebird_man.modu_site_reports.iterrows():
+            if len(df[df.NAME == row.location_name]) != 1:
+                s2id = self.find_scouting_area_for_site(row.global_id)
+                if s2id:
+                    if len(df[df.NAME == row.location_name]) < 1:
+                        logger.warning(
+                            f"{bcolors.OKCYAN}Looks like '{row.location_name}' is "
+                            f"'{self.survey_sites.loc[s2id, 'NAME']}' in GIS{bcolors.ENDC}"
+                        )
+                elif s2id != False:
+                    # A None result from `find_scouting_area_for_site` is just a NULL AREA
+                    continue 
+                else:    
+                    self.validation_fail(
+                        f"Site report {ind} {row.location_name} "
+                        f"with GID '{row.global_id}' not found in survey sites!"
+                    )
+                    valid = False
+        
+        if valid:
+            self.validation_pass(
+                f"{CHECK_MARK} All site reports map to survey sites {THUMBS_UP}"
+            )
+        else:
+            self.validation_fail(
+                f"{NOPE_MARK} At least 1 site report does not map to survey sites"
+            )
+        return valid
+
+
+    def check_site_reports(self, site_reports_file, only=[]):
+        CHECKS = set([
+            "SITE_REPORT_IDENTIFIERS"
+        ]).difference(set([s.upper() for s in only]))
+
+        self.import_modu_site_reports(site_reports_file)
+
+        return all([
+            getattr(self, f"verify_{verify_suffix.lower()}")()
+            for verify_suffix in CHECKS
+        ])
+
+    def freshness_fun(self, count, sighting_day, from_day=dt.datetime.today()):
+        if (from_day - sighting_day) == 0:
+            return float(count)
+        fscore = float(count) - ((from_day - sighting_day).days / 7.0)
+        if fscore < 0:
+            return 0
+        return fscore
+
+    def freshness_score(self, count, sighting_day, from_day=dt.datetime.today()):
+        freshness_score = self.freshness_fun(count, sighting_day, from_day)
+        return {
+            'freshness_score': freshness_score,
+            'freshness_reduction_percent': (1-(freshness_score / float(count)))*100
+        }
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -475,6 +565,7 @@ if __name__ == '__main__':
     parser.add_argument('--verify', '-v', action="store_true", required=False)
     parser.add_argument('--interpreter', '-i', action="store_true", required=False)
     parser.add_argument('--correct', '-c', action="store_true", required=False)
+    parser.add_argument('--review', '-r', action="store", required=False)
     args = parser.parse_args()
 
     if args.level:
@@ -500,6 +591,9 @@ if __name__ == '__main__':
 
     if args.verify:
         ebird_man.verify_survey_sites()
+
+    if args.review:
+        ebird_man.check_site_reports(args.review)
 
     if args.correct:
         ebird_man.correct_trapping_areas()
