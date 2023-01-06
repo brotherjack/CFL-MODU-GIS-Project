@@ -290,7 +290,7 @@ class EbirdManager:
             else:
                 if subid_count != obs['howMany']:
                     logging.warning(
-                        f"Count for {subid} has changed", 
+                        f"Count for {subid} has changed"
                         f"from {obs['howMany']} to {subid_count}"
                     )
                     self.set_individuals(subid, subid_count)
