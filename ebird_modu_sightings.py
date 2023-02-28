@@ -13,6 +13,8 @@ import pandas as pd
 import datetime as dt
 import logging, os, re, unicodedata, uuid
 
+class GIDException(Exception): pass
+
 
 class bcolors:
     HEADER = '\033[95m'
@@ -327,12 +329,14 @@ class EbirdManager:
     def import_scouting_areas(self, fname="scouting_regions.shp"):
         self.scouting_areas = gpd.read_file(fname)
 
-    def _global_id_is_unique(self, entry):
-        if len(entry) != 1:
+    def _global_id_is_unique_and_exists(self, entry, gid):
+        if len(entry) == 0:
+            return False
+        elif len(entry) != 1:
             # TODO: Should this be a critical error?
-            raise IndexError(
+            raise GIDException(
                     f"There should only be 1 entry with global ID "
-                    f"'{entry.GlobalID.iloc[0]}' however there are "
+                    f"'{gid}' however there are "
                     f"{len(entry)} entries with that ID"
                 )
         else:
@@ -342,12 +346,12 @@ class EbirdManager:
         entry = self.survey_sites[self.survey_sites.GlobalID == global_id]
 
         try:
-            if self._global_id_is_unique(entry):
+            if self._global_id_is_unique_and_exists(entry, global_id):
                 entry = entry.iloc[0]
             else:
                 return False
-        except IndexError as ie:
-            logger.error(ie)
+        except GIDException as gide:
+            logger.error(gide)
             return False
 
         for ind in self.scouting_areas.index:
@@ -366,13 +370,13 @@ class EbirdManager:
 
     def verify_global_ids_unique(self):
         valid = True
-        duplicated_global_ids = set(
-            self.survey_sites[self.survey_sites.GlobalID.duplicated()].GlobalID
-        )
+        duplicated_global_ids = self.survey_sites[
+            (self.survey_sites.GlobalID.duplicated()) & (~self.survey_sites.GlobalID.isnull())
+        ]
 
-        if duplicated_global_ids:
+        if duplicated_global_ids.GlobalID.any():
             valid = False
-            for duplicated_global_id in duplicated_global_ids:
+            for duplicated_global_id in duplicated_global_ids.iterrows():
                 ids = self.survey_sites[self.survey_sites.GlobalID == duplicated_global_id]
                 self.validation_fail(
                     f"{duplicated_global_id} is the Global ID for {list(ids.index)}"
@@ -382,6 +386,26 @@ class EbirdManager:
             self.validation_pass(
                 f"{bcolors.OKGREEN} {CHECK_MARK} Global IDs are unique "
                 f"{THUMBS_UP} {bcolors.ENDC}"
+            )
+        return valid
+
+    def verify_global_ids_exist(self):
+        valid = True
+        null_global_ids = self.survey_sites[self.survey_sites.GlobalID.isnull()]
+
+        if null_global_ids.NAME.any():
+            valid = False
+            for row_number, null_gid_entry in null_global_ids.iterrows():
+                self.validation_fail(f"Row number {row_number} - {null_gid_entry.NAME} does not have a global ID")
+
+        if valid:
+            self.validation_pass(
+                f"{bcolors.OKGREEN} {CHECK_MARK} all survey sites have Global IDs"
+                f"{THUMBS_UP} {bcolors.ENDC}"
+            )
+        else:
+            self.validation_fail(
+                f"{NOPE_MARK} At least one survey site is wrong"
             )
         return valid
 
@@ -396,7 +420,8 @@ class EbirdManager:
                     f"{found_area}",
                     suppress=supress_log
                 )
-                self._trapping_area_cache = str(found_area)
+                if found_area:
+                    self._trapping_area_cache = str(found_area)
                 return False
             else:
                 self.validation_pass(
@@ -443,7 +468,8 @@ class EbirdManager:
     def verify_survey_sites(self, only=[]):
         VERIFICATIONS = set([
             "GLOBAL_IDS_UNIQUE",
-            "TRAPPING_AREAS"
+            "TRAPPING_AREAS",
+            "GLOBAL_IDS_EXIST"
         ]).difference(set([s.upper() for s in only]))
 
         return all([
@@ -484,10 +510,11 @@ class EbirdManager:
             if not self.verify_trapping_area(ind, supress_log):
                 name, area, gid = self.survey_sites.loc[ind, ["NAME", "AREA", "GlobalID"]]
                 self.survey_sites.loc[ind, "AREA"] = self._trapping_area_cache
-                logger.info(
-                    f"Corrected trapping area for {name} - {gid}, "
-                    f"from '{area}' to '{self._trapping_area_cache}'"
-                )
+                if gid:
+                    logger.info(
+                        f"Corrected trapping area for {name} - {gid}, "
+                        f"from '{area}' to '{self._trapping_area_cache}'"
+                    )
         logger.info(f"Corrections completed {THUMBS_UP}")
 
     def verify_site_report_identifiers(self):
