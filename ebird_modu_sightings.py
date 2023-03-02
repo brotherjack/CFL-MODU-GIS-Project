@@ -13,6 +13,10 @@ import pandas as pd
 import datetime as dt
 import logging, os, re, unicodedata, uuid
 
+
+DEFAULT_REGION = region_code = 'US-FL-095'
+
+
 class GIDException(Exception): pass
 
 
@@ -80,6 +84,7 @@ class EbirdManager:
         self._raw_pulls = []
         self._trapping_area_cache = None
         self.modu_site_reports = None
+        self.fl_regions = {}
     
     def _modu_count_column_mapper(self, col):
         col = col.lower().replace(" ", "_")
@@ -249,10 +254,55 @@ class EbirdManager:
             "ebird_subId": obs["subId"],
             "ebird_location_name": obs["locName"]
         })
+        
+    def pull_florida_regions(self):
+        regions = get_regions(API_KEY, "subnational2", "US-FL")
+        self.fl_regions = {}
+        regex = r'[1-9]+\d*$'
+        
+        for region in regions:
+            m = re.search(regex, region.get('code'))
+            if m:
+                name = region.get('name').lower().replace('.', '')
+                self.fl_regions[name] = m.group()
+                if name == 'miami-dade':
+                    self.fl_regions['miami'] = m.group()
+                    self.fl_regions['dade'] = m.group()
+            else:
+                logging.error(
+                    f"Could not match code for '{region.get('name')}'"
+                    f" with regex '{regex}' where code is "
+                    f"{region.get('code')}"
+                )
+        
+        logging.debug("Pulled ebird region codes for florida")
 
-    def pull_new_entries(self, region_code, species_codes=None, save=True) -> int:
+    def parse_regions(self, region_codes):
+        if region_codes == DEFAULT_REGION:
+            return [DEFAULT_REGION]
+        
+        if not self.fl_regions:
+            self.pull_florida_regions()
+        
+        parsed_codes = []
+        self.fl_region_by_code = {v: k for k, v in self.fl_regions.items()}
+        for code in region_codes:
+            parsed = self.fl_regions.get(code.lower().replace('.', ''))
+            if parsed:
+                parsed_codes.append(f"US-FL-{parsed.zfill(3)}")
+            else:
+                m = re.search('[1-9]+\d*$', code)
+                if m:
+                    parsed = self.fl_region_by_code.get(m.group())
+                    if not parsed:
+                        logger.error(f"Could not find FL region for {code}")            
+                    else:
+                        parsed_codes.append(f"US-FL-{m.group().zfill(3)}")
+        return parsed_codes    
+
+    def pull_new_entries(self, region_codes=DEFAULT_REGION, species_codes=None, save=True) -> int:
         """
-        Takes an ebird `region_code` (eg. "US-FL-095") and a list of ebird
+        Takes a list of ebird `region_codes` (eg. "US-FL-095") and a list of ebird
         `species_codes` (eg. ['motduc', 'x00422', 'motduc1', 'y00632']),
         defaults to `self.targets`. This method then uses this data to make
         an API call to ebird to download the latest observations for the 
@@ -273,6 +323,15 @@ class EbirdManager:
         if os.path.exists(self.file_name):
             self.load()
         
+        new_count = 0
+        for i, region_code in enumerate(self.parse_regions(region_codes)):
+            logger.info(f"Pulling from {region_codes[i]} {region_code}...")
+            count_from_region = self.pull_entries_for_region(region_code, species_codes, save)
+            logger.info(f"Found {count_from_region} individuals from {region_codes[i]} {region_code}")
+            new_count += count_from_region
+        return new_count
+    
+    def pull_entries_for_region(self, region_code, species_codes=None, save=True):
         species_obs = self._pull_species_observations(region_code, species_codes)
         gjentries = self.checklists_in_geojson()
 
@@ -588,7 +647,7 @@ if __name__ == '__main__':
         choices=["DEBUG", "INFO", "WARNING", "WARN", "CRITICAL", "ERROR"]
     )
 
-    parser.add_argument('--pull', '-p', action="store_true", required=False)
+    parser.add_argument('--pull', '-p', action="append", required=False)
     parser.add_argument('--verify', '-v', action="store_true", required=False)
     parser.add_argument('--interpreter', '-i', action="store_true", required=False)
     parser.add_argument('--correct', '-c', action="store_true", required=False)
@@ -603,14 +662,13 @@ if __name__ == '__main__':
     if not API_KEY:
         raise IOError("Environmental variable 'API_KEY' must be set")
 
-    region_code = 'US-FL-095'
     species_codes = ['motduc', 'x00422', 'motduc1', 'y00632']
 
     ebird_man = EbirdManager(API_KEY, "ebird.geojson", targets=species_codes)
 
     if args.pull:
         logger.info("Pulling data...")
-        new_count = ebird_man.pull_new_entries(region_code, save=True)
+        new_count = ebird_man.pull_new_entries(args.pull, save=True)
         logger.info(f"Saved {new_count} new entries")
 
     ebird_man.import_survey_sites()
