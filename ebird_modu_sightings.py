@@ -126,6 +126,13 @@ class EbirdManager:
         if 'type' in gjson.keys() and 'features' in gjson.keys():
             return gjson['type'] == 'FeatureCollection' and hasattr(gjson['features'], 'append')
 
+    def create_empty_feature_collection(self, fname=None):
+        if not fname:
+            fname = self.file_name
+        else:
+            with open(fname, 'w') as f:
+                geojson_dump({"type": "FeatureCollection", "features": []}, f)
+
     def indiv(self, subid):
         """
         Returns the number of individuals for an ebird checklist, 
@@ -201,8 +208,13 @@ class EbirdManager:
         if not fname:
             fname = self.file_name
         
+        if not os.path.exists(fname):
+            logging.debug(f"{fname} does not exist...creating...")
+            self.create_empty_feature_collection(fname)
+        
         with open(fname, 'r') as f:
             gjson = geojson_load(f)
+                
             if self._is_feature_collection(gjson):
                 self.geo_json = gjson
                 self._setup_features()
@@ -320,8 +332,7 @@ class EbirdManager:
                 "list of ebird 'species_codes' must be passed to method if targets are not set"
             )
 
-        if os.path.exists(self.file_name):
-            self.load()
+        self.load()
         
         new_count = 0
         for i, region_code in enumerate(self.parse_regions(region_codes)):
