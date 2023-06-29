@@ -674,8 +674,9 @@ if __name__ == '__main__':
         raise IOError("Environmental variable 'API_KEY' must be set")
 
     species_codes = ['motduc', 'x00422', 'motduc1', 'y00632']
-
+    #species_codes_mall = ['mallar', 'mallar2', 'mallar3', 'mallar4']
     ebird_man = EbirdManager(API_KEY, "ebird.geojson", targets=species_codes)
+    #ebird_man = EbirdManager(API_KEY, "mall.geojson", targets=species_codes_mall)
 
     if args.pull:
         logger.info("Pulling data...")
