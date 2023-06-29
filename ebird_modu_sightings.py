@@ -14,6 +14,12 @@ import datetime as dt
 import logging, os, re, unicodedata, uuid
 
 
+DEFAULT_REGION = region_code = 'US-FL-095'
+
+
+class GIDException(Exception): pass
+
+
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -78,6 +84,7 @@ class EbirdManager:
         self._raw_pulls = []
         self._trapping_area_cache = None
         self.modu_site_reports = None
+        self.fl_regions = {}
     
     def _modu_count_column_mapper(self, col):
         col = col.lower().replace(" ", "_")
@@ -118,6 +125,13 @@ class EbirdManager:
     def _is_feature_collection(self, gjson) -> bool:
         if 'type' in gjson.keys() and 'features' in gjson.keys():
             return gjson['type'] == 'FeatureCollection' and hasattr(gjson['features'], 'append')
+
+    def create_empty_feature_collection(self, fname=None):
+        if not fname:
+            fname = self.file_name
+        else:
+            with open(fname, 'w') as f:
+                geojson_dump({"type": "FeatureCollection", "features": []}, f)
 
     def indiv(self, subid):
         """
@@ -194,8 +208,13 @@ class EbirdManager:
         if not fname:
             fname = self.file_name
         
+        if not os.path.exists(fname):
+            logging.debug(f"{fname} does not exist...creating...")
+            self.create_empty_feature_collection(fname)
+        
         with open(fname, 'r') as f:
             gjson = geojson_load(f)
+                
             if self._is_feature_collection(gjson):
                 self.geo_json = gjson
                 self._setup_features()
@@ -247,10 +266,55 @@ class EbirdManager:
             "ebird_subId": obs["subId"],
             "ebird_location_name": obs["locName"]
         })
+        
+    def pull_florida_regions(self):
+        regions = get_regions(API_KEY, "subnational2", "US-FL")
+        self.fl_regions = {}
+        regex = r'[1-9]+\d*$'
+        
+        for region in regions:
+            m = re.search(regex, region.get('code'))
+            if m:
+                name = region.get('name').lower().replace('.', '')
+                self.fl_regions[name] = m.group()
+                if name == 'miami-dade':
+                    self.fl_regions['miami'] = m.group()
+                    self.fl_regions['dade'] = m.group()
+            else:
+                logging.error(
+                    f"Could not match code for '{region.get('name')}'"
+                    f" with regex '{regex}' where code is "
+                    f"{region.get('code')}"
+                )
+        
+        logging.debug("Pulled ebird region codes for florida")
 
-    def pull_new_entries(self, region_code, species_codes=None, save=True) -> int:
+    def parse_regions(self, region_codes):
+        if region_codes == DEFAULT_REGION:
+            return [DEFAULT_REGION]
+        
+        if not self.fl_regions:
+            self.pull_florida_regions()
+        
+        parsed_codes = []
+        self.fl_region_by_code = {v: k for k, v in self.fl_regions.items()}
+        for code in region_codes:
+            parsed = self.fl_regions.get(code.lower().replace('.', ''))
+            if parsed:
+                parsed_codes.append(f"US-FL-{parsed.zfill(3)}")
+            else:
+                m = re.search('[1-9]+\d*$', code)
+                if m:
+                    parsed = self.fl_region_by_code.get(m.group())
+                    if not parsed:
+                        logger.error(f"Could not find FL region for {code}")            
+                    else:
+                        parsed_codes.append(f"US-FL-{m.group().zfill(3)}")
+        return parsed_codes    
+
+    def pull_new_entries(self, region_codes=DEFAULT_REGION, species_codes=None, save=True) -> int:
         """
-        Takes an ebird `region_code` (eg. "US-FL-095") and a list of ebird
+        Takes a list of ebird `region_codes` (eg. "US-FL-095") and a list of ebird
         `species_codes` (eg. ['motduc', 'x00422', 'motduc1', 'y00632']),
         defaults to `self.targets`. This method then uses this data to make
         an API call to ebird to download the latest observations for the 
@@ -268,9 +332,17 @@ class EbirdManager:
                 "list of ebird 'species_codes' must be passed to method if targets are not set"
             )
 
-        if os.path.exists(self.file_name):
-            self.load()
+        self.load()
         
+        new_count = 0
+        for i, region_code in enumerate(self.parse_regions(region_codes)):
+            logger.info(f"Pulling from {region_codes[i]} {region_code}...")
+            count_from_region = self.pull_entries_for_region(region_code, species_codes, save)
+            logger.info(f"Found {count_from_region} individuals from {region_codes[i]} {region_code}")
+            new_count += count_from_region
+        return new_count
+    
+    def pull_entries_for_region(self, region_code, species_codes=None, save=True):
         species_obs = self._pull_species_observations(region_code, species_codes)
         gjentries = self.checklists_in_geojson()
 
@@ -327,12 +399,14 @@ class EbirdManager:
     def import_scouting_areas(self, fname="scouting_regions.shp"):
         self.scouting_areas = gpd.read_file(fname)
 
-    def _global_id_is_unique(self, entry):
-        if len(entry) != 1:
+    def _global_id_is_unique_and_exists(self, entry, gid):
+        if len(entry) == 0:
+            return False
+        elif len(entry) != 1:
             # TODO: Should this be a critical error?
-            raise IndexError(
+            raise GIDException(
                     f"There should only be 1 entry with global ID "
-                    f"'{entry.GlobalID.iloc[0]}' however there are "
+                    f"'{gid}' however there are "
                     f"{len(entry)} entries with that ID"
                 )
         else:
@@ -342,12 +416,12 @@ class EbirdManager:
         entry = self.survey_sites[self.survey_sites.GlobalID == global_id]
 
         try:
-            if self._global_id_is_unique(entry):
+            if self._global_id_is_unique_and_exists(entry, global_id):
                 entry = entry.iloc[0]
             else:
                 return False
-        except IndexError as ie:
-            logger.error(ie)
+        except GIDException as gide:
+            logger.error(gide)
             return False
 
         for ind in self.scouting_areas.index:
@@ -366,13 +440,13 @@ class EbirdManager:
 
     def verify_global_ids_unique(self):
         valid = True
-        duplicated_global_ids = set(
-            self.survey_sites[self.survey_sites.GlobalID.duplicated()].GlobalID
-        )
+        duplicated_global_ids = self.survey_sites[
+            (self.survey_sites.GlobalID.duplicated()) & (~self.survey_sites.GlobalID.isnull())
+        ]
 
-        if duplicated_global_ids:
+        if duplicated_global_ids.GlobalID.any():
             valid = False
-            for duplicated_global_id in duplicated_global_ids:
+            for duplicated_global_id in duplicated_global_ids.iterrows():
                 ids = self.survey_sites[self.survey_sites.GlobalID == duplicated_global_id]
                 self.validation_fail(
                     f"{duplicated_global_id} is the Global ID for {list(ids.index)}"
@@ -382,6 +456,26 @@ class EbirdManager:
             self.validation_pass(
                 f"{bcolors.OKGREEN} {CHECK_MARK} Global IDs are unique "
                 f"{THUMBS_UP} {bcolors.ENDC}"
+            )
+        return valid
+
+    def verify_global_ids_exist(self):
+        valid = True
+        null_global_ids = self.survey_sites[self.survey_sites.GlobalID.isnull()]
+
+        if null_global_ids.NAME.any():
+            valid = False
+            for row_number, null_gid_entry in null_global_ids.iterrows():
+                self.validation_fail(f"Row number {row_number} - {null_gid_entry.NAME} does not have a global ID")
+
+        if valid:
+            self.validation_pass(
+                f"{bcolors.OKGREEN} {CHECK_MARK} all survey sites have Global IDs"
+                f"{THUMBS_UP} {bcolors.ENDC}"
+            )
+        else:
+            self.validation_fail(
+                f"{NOPE_MARK} At least one survey site is wrong"
             )
         return valid
 
@@ -396,7 +490,8 @@ class EbirdManager:
                     f"{found_area}",
                     suppress=supress_log
                 )
-                self._trapping_area_cache = str(found_area)
+                if found_area:
+                    self._trapping_area_cache = str(found_area)
                 return False
             else:
                 self.validation_pass(
@@ -443,7 +538,8 @@ class EbirdManager:
     def verify_survey_sites(self, only=[]):
         VERIFICATIONS = set([
             "GLOBAL_IDS_UNIQUE",
-            "TRAPPING_AREAS"
+            "TRAPPING_AREAS",
+            "GLOBAL_IDS_EXIST"
         ]).difference(set([s.upper() for s in only]))
 
         return all([
@@ -484,10 +580,11 @@ class EbirdManager:
             if not self.verify_trapping_area(ind, supress_log):
                 name, area, gid = self.survey_sites.loc[ind, ["NAME", "AREA", "GlobalID"]]
                 self.survey_sites.loc[ind, "AREA"] = self._trapping_area_cache
-                logger.info(
-                    f"Corrected trapping area for {name} - {gid}, "
-                    f"from '{area}' to '{self._trapping_area_cache}'"
-                )
+                if gid:
+                    logger.info(
+                        f"Corrected trapping area for {name} - {gid}, "
+                        f"from '{area}' to '{self._trapping_area_cache}'"
+                    )
         logger.info(f"Corrections completed {THUMBS_UP}")
 
     def verify_site_report_identifiers(self):
@@ -561,7 +658,7 @@ if __name__ == '__main__':
         choices=["DEBUG", "INFO", "WARNING", "WARN", "CRITICAL", "ERROR"]
     )
 
-    parser.add_argument('--pull', '-p', action="store_true", required=False)
+    parser.add_argument('--pull', '-p', action="append", required=False)
     parser.add_argument('--verify', '-v', action="store_true", required=False)
     parser.add_argument('--interpreter', '-i', action="store_true", required=False)
     parser.add_argument('--correct', '-c', action="store_true", required=False)
@@ -576,14 +673,14 @@ if __name__ == '__main__':
     if not API_KEY:
         raise IOError("Environmental variable 'API_KEY' must be set")
 
-    region_code = 'US-FL-095'
     species_codes = ['motduc', 'x00422', 'motduc1', 'y00632']
-
+    #species_codes_mall = ['mallar', 'mallar2', 'mallar3', 'mallar4']
     ebird_man = EbirdManager(API_KEY, "ebird.geojson", targets=species_codes)
+    #ebird_man = EbirdManager(API_KEY, "mall.geojson", targets=species_codes_mall)
 
     if args.pull:
         logger.info("Pulling data...")
-        new_count = ebird_man.pull_new_entries(region_code, save=True)
+        new_count = ebird_man.pull_new_entries(args.pull, save=True)
         logger.info(f"Saved {new_count} new entries")
 
     ebird_man.import_survey_sites()
