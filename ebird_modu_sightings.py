@@ -244,6 +244,12 @@ class EbirdManager:
             for entry in obs:
                 if entry['subId'] in observations.keys():
                     cross_count += 1
+                    if not "howMany" in entry.keys():
+                        logger.warning(
+                            f"Observation for checklist {entry['subId']} does not "
+                            "count individuals and will be ignored"
+                        )
+                        continue
                     observations[entry['subId']]['howMany'] += entry['howMany']
                 else:
                     observations[entry['subId']] = entry 
